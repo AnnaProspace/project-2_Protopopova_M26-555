@@ -1,3 +1,25 @@
+# primitive-db
+
+Консольная база данных: таблицы, записи, подтверждение опасных команд и замер времени.
+
+## Установка
+
+```bash
+make install
+```
+
+## Запуск
+
+```bash
+make run
+```
+
+## Проверка стиля
+
+```bash
+make lint
+```
+
 ## Управление таблицами
 
 Команда `database` открывает цикл работы с таблицами. Метаданные хранятся в `db_meta.json`.
@@ -11,9 +33,11 @@ list_tables
 drop_table users
 exit
 ```
+
 ## Демонстрация
 
 [![asciicast](https://asciinema.org/a/cQBN4Pzy6NBhUa8F.svg)](https://asciinema.org/a/cQBN4Pzy6NBhUa8F)
+
 ## CRUD-операции
 
 Команда `database` работает с записями. Строки лежат в `data/<имя_таблицы>.json`. В `insert` поле `ID` не передаётся.
@@ -25,9 +49,11 @@ update users set age = 29 where name = "Sergei"
 delete from users where ID = 1
 info users
 ```
+
 ## Демонстрация CRUD
 
 [![asciicast](https://asciinema.org/a/OOd5wf7xC7LGhR2d.svg)](https://asciinema.org/a/OOd5wf7xC7LGhR2d)
+
 ## Декораторы
 
 Ошибки файлов, отсутствующих таблиц и неверных типов перехватывает `handle_db_errors`.
@@ -35,6 +61,10 @@ info users
 `drop_table` и `delete` спрашивают подтверждение. Операция выполняется только после ответа `y`. Любой другой ответ её отменяет.
 
 `insert` и `select` печатают время выполнения. Повтор одинакового `select` берётся из кэша.
+
 ## Демонстрация декораторов
 
 [![asciicast](https://asciinema.org/a/PzckFWPVvUagXNOK.svg)](https://asciinema.org/a/PzckFWPVvUagXNOK)
+## Полный сценарий
+
+[![asciicast](https://asciinema.org/a/iJwOguM7rQmD7nkF.svg)](https://asciinema.org/a/iJwOguM7rQmD7nkF)

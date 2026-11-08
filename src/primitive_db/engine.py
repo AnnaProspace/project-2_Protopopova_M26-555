@@ -1,9 +1,11 @@
-import re
+"""Command loop for the database."""
+
 import shlex
 
 import prompt
 from prettytable import PrettyTable
 
+from primitive_db.constants import ID_COLUMN, META_FILE
 from primitive_db.core import (
     column_type,
     create_table,
@@ -14,7 +16,7 @@ from primitive_db.core import (
     select,
     update,
 )
-from primitive_db.parser import parse_clause, split_values
+from primitive_db.parser import coerce, parse_clause, split_values
 from primitive_db.utils import (
     delete_table_data,
     load_metadata,
@@ -23,7 +25,29 @@ from primitive_db.utils import (
     save_table_data,
 )
 
-METADATA_FILE = "db_meta.json"
+
+def _starts(text, prefix):
+    """Return True when text begins with prefix, ignoring case."""
+    return text.lower().startswith(prefix.lower())
+
+
+def _split_once(text, separator):
+    """Split text on the first case-insensitive separator."""
+    lowered = text.lower()
+    index = lowered.find(separator.lower())
+    if index < 0:
+        return None
+    left = text[:index]
+    right = text[index + len(separator):]
+    return left, right
+
+
+def _one_word(text):
+    """Return a single table name, or None."""
+    name = text.strip()
+    if not name or " " in name:
+        return None
+    return name
 
 
 def print_help():
@@ -54,10 +78,12 @@ def print_help():
 
 
 def _bad_value(value):
+    """Print a validation message for a bad argument."""
     print(f"Некорректное значение: {value}. Попробуйте снова.")
 
 
 def _require_table(metadata, table_name):
+    """Return False and print an error when the table is missing."""
     if table_name not in metadata:
         print(f'Ошибка: Таблица "{table_name}" не существует.')
         return False
@@ -65,6 +91,7 @@ def _require_table(metadata, table_name):
 
 
 def _parse_where(metadata, table_name, text):
+    """Parse a where clause into a one-item dictionary."""
     try:
         column, raw = parse_clause(text)
     except ValueError:
@@ -75,20 +102,15 @@ def _parse_where(metadata, table_name, text):
         _bad_value(column)
         return None
     try:
-        value = parse_typed(raw, type_name)
+        value = coerce(raw, type_name)
     except ValueError:
         _bad_value(raw)
         return None
     return {column: value}
 
 
-def parse_typed(raw, type_name):
-    from primitive_db.parser import coerce
-
-    return coerce(raw, type_name)
-
-
 def _print_rows(metadata, table_name, rows):
+    """Print rows with PrettyTable."""
     columns = [item.split(":", 1)[0] for item in metadata[table_name]]
     table = PrettyTable()
     table.field_names = columns
@@ -98,6 +120,7 @@ def _print_rows(metadata, table_name, rows):
 
 
 def _handle_table_command(metadata, user_input):
+    """Handle create_table, list_tables and drop_table."""
     try:
         args = shlex.split(user_input)
     except ValueError:
@@ -116,7 +139,7 @@ def _handle_table_command(metadata, user_input):
             return
         updated = create_table(metadata, rest[0], rest[1:])
         if updated is not None:
-            save_metadata(METADATA_FILE, updated)
+            save_metadata(META_FILE, updated)
         return
     if command == "drop_table":
         if len(rest) != 1:
@@ -124,26 +147,33 @@ def _handle_table_command(metadata, user_input):
             return
         updated = drop_table(metadata, rest[0])
         if updated is not None:
-            save_metadata(METADATA_FILE, updated)
+            save_metadata(META_FILE, updated)
             delete_table_data(rest[0])
 
 
 def _handle_insert(metadata, user_input):
-    match = re.fullmatch(
-        r"insert\s+into\s+(\w+)\s+values\s*\((.*)\)",
-        user_input.strip(),
-        re.IGNORECASE,
-    )
-    if not match:
+    """Insert one row into a table."""
+    text = user_input.strip()
+    if not _starts(text, "insert into "):
         _bad_value(user_input)
         return
-    table_name, raw_values = match.group(1), match.group(2)
+    rest = text[len("insert into "):]
+    parts = _split_once(rest, " values")
+    if parts is None:
+        _bad_value(user_input)
+        return
+    table_name = _one_word(parts[0])
+    values_part = parts[1].strip()
+    has_parens = values_part.startswith("(") and values_part.endswith(")")
+    if table_name is None or not has_parens:
+        _bad_value(user_input)
+        return
     if not _require_table(metadata, table_name):
         return
     try:
-        values = split_values(raw_values)
+        values = split_values(values_part[1:-1])
     except ValueError:
-        _bad_value(raw_values)
+        _bad_value(values_part)
         return
     updated = insert(metadata, table_name, values)
     if updated is not None:
@@ -151,23 +181,20 @@ def _handle_insert(metadata, user_input):
 
 
 def _handle_select(metadata, user_input):
-    where_match = re.fullmatch(
-        r"select\s+from\s+(\w+)\s+where\s+(.+)",
-        user_input.strip(),
-        re.IGNORECASE,
-    )
-    all_match = re.fullmatch(
-        r"select\s+from\s+(\w+)",
-        user_input.strip(),
-        re.IGNORECASE,
-    )
-    if where_match:
-        table_name = where_match.group(1)
-        where_text = where_match.group(2)
-    elif all_match:
-        table_name = all_match.group(1)
+    """Print all rows or rows matched by where."""
+    text = user_input.strip()
+    if not _starts(text, "select from "):
+        _bad_value(user_input)
+        return
+    rest = text[len("select from "):]
+    where_parts = _split_once(rest, " where ")
+    if where_parts is None:
+        table_name = _one_word(rest)
         where_text = None
     else:
+        table_name = _one_word(where_parts[0])
+        where_text = where_parts[1].strip()
+    if table_name is None:
         _bad_value(user_input)
         return
     if not _require_table(metadata, table_name):
@@ -182,15 +209,23 @@ def _handle_select(metadata, user_input):
 
 
 def _handle_update(metadata, user_input):
-    match = re.fullmatch(
-        r"update\s+(\w+)\s+set\s+(.+?)\s+where\s+(.+)",
-        user_input.strip(),
-        re.IGNORECASE,
-    )
-    if not match:
+    """Update rows matched by where."""
+    text = user_input.strip()
+    if not _starts(text, "update "):
         _bad_value(user_input)
         return
-    table_name, set_text, where_text = match.groups()
+    rest = text[len("update "):]
+    set_parts = _split_once(rest, " set ")
+    if set_parts is None:
+        _bad_value(user_input)
+        return
+    table_name = _one_word(set_parts[0])
+    where_parts = _split_once(set_parts[1], " where ")
+    if table_name is None or where_parts is None:
+        _bad_value(user_input)
+        return
+    set_text = where_parts[0].strip()
+    where_text = where_parts[1].strip()
     if not _require_table(metadata, table_name):
         return
     try:
@@ -198,7 +233,7 @@ def _handle_update(metadata, user_input):
     except ValueError:
         _bad_value(set_text)
         return
-    if set_column.upper() == "ID":
+    if set_column.upper() == ID_COLUMN:
         _bad_value(set_column)
         return
     set_type = column_type(metadata, table_name, set_column)
@@ -206,7 +241,7 @@ def _handle_update(metadata, user_input):
         _bad_value(set_column)
         return
     try:
-        set_value = parse_typed(set_raw, set_type)
+        set_value = coerce(set_raw, set_type)
     except ValueError:
         _bad_value(set_raw)
         return
@@ -222,21 +257,27 @@ def _handle_update(metadata, user_input):
     save_table_data(table_name, data)
     for row in matched:
         print(
-            f'Запись с ID={row["ID"]} в таблице "{table_name}" '
+            f'Запись с ID={row[ID_COLUMN]} в таблице "{table_name}" '
             "успешно обновлена."
         )
 
 
 def _handle_delete(metadata, user_input):
-    match = re.fullmatch(
-        r"delete\s+from\s+(\w+)\s+where\s+(.+)",
-        user_input.strip(),
-        re.IGNORECASE,
-    )
-    if not match:
+    """Delete rows matched by where after confirmation."""
+    text = user_input.strip()
+    if not _starts(text, "delete from "):
         _bad_value(user_input)
         return
-    table_name, where_text = match.groups()
+    rest = text[len("delete from "):]
+    where_parts = _split_once(rest, " where ")
+    if where_parts is None:
+        _bad_value(user_input)
+        return
+    table_name = _one_word(where_parts[0])
+    where_text = where_parts[1].strip()
+    if table_name is None:
+        _bad_value(user_input)
+        return
     if not _require_table(metadata, table_name):
         return
     where_clause = _parse_where(metadata, table_name, where_text)
@@ -253,17 +294,21 @@ def _handle_delete(metadata, user_input):
     save_table_data(table_name, updated)
     for row in matched:
         print(
-            f'Запись с ID={row["ID"]} успешно удалена '
+            f'Запись с ID={row[ID_COLUMN]} успешно удалена '
             f'из таблицы "{table_name}".'
         )
 
 
 def _handle_info(metadata, user_input):
-    match = re.fullmatch(r"info\s+(\w+)", user_input.strip(), re.IGNORECASE)
-    if not match:
+    """Print a table schema and the number of rows."""
+    text = user_input.strip()
+    if not _starts(text, "info "):
         _bad_value(user_input)
         return
-    table_name = match.group(1)
+    table_name = _one_word(text[len("info "):])
+    if table_name is None:
+        _bad_value(user_input)
+        return
     if not _require_table(metadata, table_name):
         return
     columns = ", ".join(metadata[table_name])
@@ -277,7 +322,7 @@ def run():
     """Run the database command loop."""
     print_help()
     while True:
-        metadata = load_metadata(METADATA_FILE)
+        metadata = load_metadata(META_FILE)
         user_input = prompt.string(">>> Введите команду: ")
         stripped = user_input.strip()
         if not stripped:

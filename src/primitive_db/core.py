@@ -1,3 +1,6 @@
+"""Business logic for tables and rows."""
+
+from primitive_db.constants import ID_COLUMN, TYPE_INT, VALID_TYPES
 from primitive_db.decorators import (
     confirm_action,
     create_cacher,
@@ -7,7 +10,6 @@ from primitive_db.decorators import (
 from primitive_db.parser import coerce
 from primitive_db.utils import load_table_data
 
-VALID_TYPES = ("int", "str", "bool")
 _cache_result = create_cacher()
 
 
@@ -29,8 +31,8 @@ def create_table(metadata, table_name, columns):
             return None
         parsed.append((name, type_name))
 
-    if not any(name.upper() == "ID" for name, _type_name in parsed):
-        parsed.insert(0, ("ID", "int"))
+    if not any(name.upper() == ID_COLUMN for name, _type_name in parsed):
+        parsed.insert(0, (ID_COLUMN, TYPE_INT))
 
     metadata[table_name] = [f"{name}:{type_name}" for name, type_name in parsed]
     rendered = ", ".join(metadata[table_name])
@@ -71,6 +73,7 @@ def column_type(metadata, table_name, column_name):
 
 
 def _schema(metadata, table_name):
+    """Return column names and types for a table."""
     return [item.split(":", 1) for item in metadata[table_name]]
 
 
@@ -85,7 +88,7 @@ def insert(metadata, table_name, values):
     data_columns = [
         (name, type_name)
         for name, type_name in _schema(metadata, table_name)
-        if name.upper() != "ID"
+        if name.upper() != ID_COLUMN
     ]
     if len(values) != len(data_columns):
         print("Некорректное значение: количество значений. Попробуйте снова.")
@@ -100,9 +103,13 @@ def insert(metadata, table_name, values):
             return None
 
     data = load_table_data(table_name)
-    ids = [row["ID"] for row in data if isinstance(row, dict) and "ID" in row]
+    ids = [
+        row[ID_COLUMN]
+        for row in data
+        if isinstance(row, dict) and ID_COLUMN in row
+    ]
     new_id = max(ids) + 1 if ids else 1
-    stored = {"ID": new_id}
+    stored = {ID_COLUMN: new_id}
     stored.update(record)
     data.append(stored)
     print(f'Запись с ID={new_id} успешно добавлена в таблицу "{table_name}".')
@@ -110,6 +117,7 @@ def insert(metadata, table_name, values):
 
 
 def _select_key(table_data, where_clause):
+    """Build a cache key from rows and a condition."""
     rows = tuple(tuple(sorted(row.items())) for row in table_data)
     if where_clause is None:
         return (rows, None)
@@ -123,6 +131,7 @@ def select(table_data, where_clause=None):
     key = _select_key(table_data, where_clause)
 
     def compute():
+        """Filter the current rows."""
         if where_clause is None:
             found = list(table_data)
         else:

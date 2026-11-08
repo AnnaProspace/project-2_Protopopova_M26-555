@@ -1,21 +1,43 @@
-import re
+"""Parsers for values and where/set clauses."""
+
+from primitive_db.constants import TYPE_BOOL, TYPE_INT, TYPE_STR
+
+
+def _is_identifier(text):
+    """Return True when text is a column or table name."""
+    if not text:
+        return False
+    first = text[0]
+    if not (first.isalpha() or first == "_"):
+        return False
+    for char in text[1:]:
+        if not (char.isalnum() or char == "_"):
+            return False
+    return True
+
+
+def _is_int(text):
+    """Return True when text is an integer literal."""
+    digits = text[1:] if text.startswith("-") else text
+    return bool(digits) and digits.isdigit()
 
 
 def coerce(raw, expected_type):
     """Convert a command literal to the column type."""
     text = raw.strip()
-    if expected_type == "str":
+    if expected_type == TYPE_STR:
         if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
             return text[1:-1]
         raise ValueError(text)
-    if expected_type == "int":
-        if re.fullmatch(r"-?\d+", text):
+    if expected_type == TYPE_INT:
+        if _is_int(text):
             return int(text)
         raise ValueError(text)
-    if expected_type == "bool":
-        if text.lower() == "true":
+    if expected_type == TYPE_BOOL:
+        lowered = text.lower()
+        if lowered == "true":
             return True
-        if text.lower() == "false":
+        if lowered == "false":
             return False
         raise ValueError(text)
     raise ValueError(text)
@@ -23,13 +45,15 @@ def coerce(raw, expected_type):
 
 def parse_clause(text):
     """Turn 'age = 28' into a column name and a raw value."""
-    match = re.fullmatch(
-        r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)",
-        text.strip(),
-    )
-    if not match:
-        raise ValueError(text.strip())
-    return match.group(1), match.group(2).strip()
+    cleaned = text.strip()
+    if "=" not in cleaned:
+        raise ValueError(cleaned)
+    column, raw = cleaned.split("=", 1)
+    column = column.strip()
+    raw = raw.strip()
+    if not _is_identifier(column) or not raw:
+        raise ValueError(cleaned)
+    return column, raw
 
 
 def split_values(raw):

@@ -1,7 +1,8 @@
 [project]
 name = "primitive-db"
 version = "0.1.0"
-description = "Add your description here"
+description = "Консольная база данных с таблицами и CRUD-операциями."
+author = [{ name = "Anna Protopopova" }]
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

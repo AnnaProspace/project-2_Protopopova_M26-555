@@ -1,12 +1,22 @@
-import functools
+"""Decorators and a closure cache for database operations."""
+
 import time
+
+from primitive_db.constants import YES_ANSWER
+
+
+def _keep_name(wrapper, func):
+    """Copy the original function name and docstring."""
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    return wrapper
 
 
 def handle_db_errors(func):
     """Print database errors instead of stopping the program."""
 
-    @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        """Run the function and translate database errors."""
         try:
             return func(*args, **kwargs)
         except FileNotFoundError:
@@ -25,24 +35,26 @@ def handle_db_errors(func):
             print(f"Произошла непредвиденная ошибка: {error}")
             return None
 
-    return wrapper
+    return _keep_name(wrapper, func)
 
 
 def confirm_action(action_name):
     """Ask for confirmation before a dangerous operation."""
 
     def decorator(func):
-        @functools.wraps(func)
+        """Attach the confirmation prompt to a function."""
+
         def wrapper(*args, **kwargs):
+            """Run the function only after the answer y."""
             answer = input(
                 f'Вы уверены, что хотите выполнить "{action_name}"? [y/n]: '
             )
-            if answer != "y":
+            if answer != YES_ANSWER:
                 print("Операция отменена.")
                 return None
             return func(*args, **kwargs)
 
-        return wrapper
+        return _keep_name(wrapper, func)
 
     return decorator
 
@@ -50,8 +62,8 @@ def confirm_action(action_name):
 def log_time(func):
     """Print how long the function ran."""
 
-    @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        """Measure the call with time.monotonic."""
         started = time.monotonic()
         try:
             return func(*args, **kwargs)
@@ -61,7 +73,7 @@ def log_time(func):
                 f"Функция {func.__name__} выполнилась за {elapsed:.3f} секунд."
             )
 
-    return wrapper
+    return _keep_name(wrapper, func)
 
 
 def create_cacher():
@@ -69,6 +81,7 @@ def create_cacher():
     cache = {}
 
     def cache_result(key, value_func):
+        """Return a cached value or compute and store it."""
         if key in cache:
             return cache[key]
         result = value_func()

@@ -1,5 +1,9 @@
+"""Helpers for reading and writing JSON files."""
+
 import json
-from pathlib import Path
+import os
+
+from primitive_db.constants import DATA_DIR
 
 
 def load_metadata(filepath):
@@ -18,14 +22,15 @@ def save_metadata(filepath, data):
 
 
 def _table_path(table_name):
-    return Path("data") / f"{table_name}.json"
+    """Return the JSON path for one table."""
+    return os.path.join(DATA_DIR, f"{table_name}.json")
 
 
 def load_table_data(table_name):
     """Load rows of one table. Missing file means an empty table."""
     path = _table_path(table_name)
     try:
-        with path.open(encoding="utf-8") as file:
+        with open(path, encoding="utf-8") as file:
             return json.load(file)
     except FileNotFoundError:
         return []
@@ -34,13 +39,13 @@ def load_table_data(table_name):
 def save_table_data(table_name, data):
     """Save rows of one table."""
     path = _table_path(table_name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
 
 
 def delete_table_data(table_name):
     """Remove the data file of a dropped table."""
     path = _table_path(table_name)
-    if path.exists():
-        path.unlink()
+    if os.path.exists(path):
+        os.remove(path)
