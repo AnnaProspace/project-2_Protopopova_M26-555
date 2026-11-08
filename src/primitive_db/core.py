@@ -1,9 +1,17 @@
+from primitive_db.decorators import (
+    confirm_action,
+    create_cacher,
+    handle_db_errors,
+    log_time,
+)
 from primitive_db.parser import coerce
 from primitive_db.utils import load_table_data
 
 VALID_TYPES = ("int", "str", "bool")
+_cache_result = create_cacher()
 
 
+@handle_db_errors
 def create_table(metadata, table_name, columns):
     """Create a table and return updated metadata, or None on error."""
     if table_name in metadata:
@@ -30,6 +38,8 @@ def create_table(metadata, table_name, columns):
     return metadata
 
 
+@handle_db_errors
+@confirm_action("удаление таблицы")
 def drop_table(metadata, table_name):
     """Delete a table and return updated metadata, or None on error."""
     if table_name not in metadata:
@@ -40,6 +50,7 @@ def drop_table(metadata, table_name):
     return metadata
 
 
+@handle_db_errors
 def list_tables(metadata):
     """Print all table names."""
     if not metadata:
@@ -49,6 +60,7 @@ def list_tables(metadata):
         print(f"- {name}")
 
 
+@handle_db_errors
 def column_type(metadata, table_name, column_name):
     """Return the declared type of a column, or None."""
     for item in metadata[table_name]:
@@ -62,6 +74,8 @@ def _schema(metadata, table_name):
     return [item.split(":", 1) for item in metadata[table_name]]
 
 
+@handle_db_errors
+@log_time
 def insert(metadata, table_name, values):
     """Insert a row. ID is generated. Returns all rows, or None."""
     if table_name not in metadata:
@@ -95,17 +109,37 @@ def insert(metadata, table_name, values):
     return data
 
 
+def _select_key(table_data, where_clause):
+    rows = tuple(tuple(sorted(row.items())) for row in table_data)
+    if where_clause is None:
+        return (rows, None)
+    return (rows, tuple(sorted(where_clause.items())))
+
+
+@handle_db_errors
+@log_time
 def select(table_data, where_clause=None):
     """Return all rows, or only rows that match where_clause."""
-    if where_clause is None:
-        return list(table_data)
-    return [
-        row
-        for row in table_data
-        if all(row.get(key) == value for key, value in where_clause.items())
-    ]
+    key = _select_key(table_data, where_clause)
+
+    def compute():
+        if where_clause is None:
+            found = list(table_data)
+        else:
+            found = [
+                row
+                for row in table_data
+                if all(
+                    row.get(column) == value
+                    for column, value in where_clause.items()
+                )
+            ]
+        return [dict(row) for row in found]
+
+    return _cache_result(key, compute)
 
 
+@handle_db_errors
 def update(table_data, set_clause, where_clause):
     """Update matching rows and return the full row list."""
     for row in table_data:
@@ -114,10 +148,14 @@ def update(table_data, set_clause, where_clause):
     return table_data
 
 
+@handle_db_errors
+@confirm_action("удаление записи")
 def delete(table_data, where_clause):
     """Return rows that do not match where_clause."""
     return [
         row
         for row in table_data
-        if not all(row.get(key) == value for key, value in where_clause.items())
+        if not all(
+            row.get(key) == value for key, value in where_clause.items()
+        )
     ]

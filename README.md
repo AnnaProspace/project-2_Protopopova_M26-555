@@ -28,3 +28,13 @@ info users
 ## Демонстрация CRUD
 
 [![asciicast](https://asciinema.org/a/OOd5wf7xC7LGhR2d.svg)](https://asciinema.org/a/OOd5wf7xC7LGhR2d)
+## Декораторы
+
+Ошибки файлов, отсутствующих таблиц и неверных типов перехватывает `handle_db_errors`.
+
+`drop_table` и `delete` спрашивают подтверждение. Операция выполняется только после ответа `y`. Любой другой ответ её отменяет.
+
+`insert` и `select` печатают время выполнения. Повтор одинакового `select` берётся из кэша.
+## Демонстрация декораторов
+
+[![asciicast](https://asciinema.org/a/PzckFWPVvUagXNOK.svg)](https://asciinema.org/a/PzckFWPVvUagXNOK)

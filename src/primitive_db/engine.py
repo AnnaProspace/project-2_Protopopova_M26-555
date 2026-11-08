@@ -247,7 +247,10 @@ def _handle_delete(metadata, user_input):
     if not matched:
         print("Ошибка: Записи не найдены.")
         return
-    save_table_data(table_name, delete(data, where_clause))
+    updated = delete(data, where_clause)
+    if updated is None:
+        return
+    save_table_data(table_name, updated)
     for row in matched:
         print(
             f'Запись с ID={row["ID"]} успешно удалена '
