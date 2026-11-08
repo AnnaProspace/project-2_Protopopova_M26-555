@@ -1,3 +1,6 @@
+from primitive_db.parser import coerce
+from primitive_db.utils import load_table_data
+
 VALID_TYPES = ("int", "str", "bool")
 
 
@@ -44,3 +47,77 @@ def list_tables(metadata):
         return
     for name in metadata:
         print(f"- {name}")
+
+
+def column_type(metadata, table_name, column_name):
+    """Return the declared type of a column, or None."""
+    for item in metadata[table_name]:
+        name, type_name = item.split(":", 1)
+        if name == column_name:
+            return type_name
+    return None
+
+
+def _schema(metadata, table_name):
+    return [item.split(":", 1) for item in metadata[table_name]]
+
+
+def insert(metadata, table_name, values):
+    """Insert a row. ID is generated. Returns all rows, or None."""
+    if table_name not in metadata:
+        print(f'Ошибка: Таблица "{table_name}" не существует.')
+        return None
+
+    data_columns = [
+        (name, type_name)
+        for name, type_name in _schema(metadata, table_name)
+        if name.upper() != "ID"
+    ]
+    if len(values) != len(data_columns):
+        print("Некорректное значение: количество значений. Попробуйте снова.")
+        return None
+
+    record = {}
+    for (name, type_name), raw in zip(data_columns, values, strict=True):
+        try:
+            record[name] = coerce(raw, type_name)
+        except ValueError:
+            print(f"Некорректное значение: {raw}. Попробуйте снова.")
+            return None
+
+    data = load_table_data(table_name)
+    ids = [row["ID"] for row in data if isinstance(row, dict) and "ID" in row]
+    new_id = max(ids) + 1 if ids else 1
+    stored = {"ID": new_id}
+    stored.update(record)
+    data.append(stored)
+    print(f'Запись с ID={new_id} успешно добавлена в таблицу "{table_name}".')
+    return data
+
+
+def select(table_data, where_clause=None):
+    """Return all rows, or only rows that match where_clause."""
+    if where_clause is None:
+        return list(table_data)
+    return [
+        row
+        for row in table_data
+        if all(row.get(key) == value for key, value in where_clause.items())
+    ]
+
+
+def update(table_data, set_clause, where_clause):
+    """Update matching rows and return the full row list."""
+    for row in table_data:
+        if all(row.get(key) == value for key, value in where_clause.items()):
+            row.update(set_clause)
+    return table_data
+
+
+def delete(table_data, where_clause):
+    """Return rows that do not match where_clause."""
+    return [
+        row
+        for row in table_data
+        if not all(row.get(key) == value for key, value in where_clause.items())
+    ]

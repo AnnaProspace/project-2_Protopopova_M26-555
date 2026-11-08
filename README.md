@@ -14,3 +14,17 @@ exit
 ## Демонстрация
 
 [![asciicast](https://asciinema.org/a/cQBN4Pzy6NBhUa8F.svg)](https://asciinema.org/a/cQBN4Pzy6NBhUa8F)
+## CRUD-операции
+
+Команда `database` работает с записями. Строки лежат в `data/<имя_таблицы>.json`. В `insert` поле `ID` не передаётся.
+
+```text
+insert into users values ("Sergei", 28, true)
+select from users where age = 28
+update users set age = 29 where name = "Sergei"
+delete from users where ID = 1
+info users
+```
+## Демонстрация CRUD
+
+[![asciicast](https://asciinema.org/a/OOd5wf7xC7LGhR2d.svg)](https://asciinema.org/a/OOd5wf7xC7LGhR2d)
